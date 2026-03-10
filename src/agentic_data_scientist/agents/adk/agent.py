@@ -439,6 +439,7 @@ def create_agent(
         read_file,
         read_media_file,
         search_files,
+        write_file,
     )
 
     # Bind working_dir using wrapper functions that completely hide the parameter
@@ -468,6 +469,10 @@ def create_agent(
     def get_file_info_bound(path: str) -> str:
         """Get detailed metadata about a file."""
         return get_file_info(path, working_dir_str)
+
+    def write_file_bound(path: str, content: str) -> str:
+        """Write text content to a file within the working directory."""
+        return write_file(path, content, working_dir_str)
 
     tools = [
         read_file_bound,
@@ -508,7 +513,7 @@ def create_agent(
         model=DEFAULT_MODEL,
         description="Summarizes results into a comprehensive pure text report.",
         instruction=summary_agent_instructions,
-        tools=tools,  # Needs tools to read files
+        tools=tools + [write_file_bound],  # Read tools + write for summary.md
         planner=BuiltInPlanner(
             thinking_config=types.ThinkingConfig(
                 include_thoughts=True,

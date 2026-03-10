@@ -680,3 +680,45 @@ def get_file_info(path: str, working_dir: str) -> str:
         return f"Error: {e}"
     except Exception as e:
         return f"Error getting file info: {e}"
+
+
+def write_file(path: str, content: str, working_dir: str) -> str:
+    """
+    Write content to a file within the working directory.
+
+    Parameters
+    ----------
+    path : str
+        Path to the file (relative to working_dir or absolute within working_dir)
+    content : str
+        Text content to write to the file
+    working_dir : str
+        Working directory root for security validation
+
+    Returns
+    -------
+    str
+        Success message with the path written, or error message
+
+    Notes
+    -----
+    - Only files within working_dir can be written
+    - Creates parent directories if they don't exist
+    - Overwrites existing files
+
+    Examples
+    --------
+    >>> result = write_file("summary.md", "# Results\\n...", "/working/dir")
+    >>> print(result)
+    Successfully wrote 42 bytes to summary.md
+    """
+    logger.info(f"[Tool:write_file] Writing to '{path}'")
+    try:
+        file_path = _validate_path(path, working_dir)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+        return f"Successfully wrote {len(content.encode('utf-8'))} bytes to {path}"
+    except ValueError as e:
+        return f"Error: {e}"
+    except Exception as e:
+        return f"Error writing file: {e}"

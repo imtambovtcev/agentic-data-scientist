@@ -370,6 +370,7 @@ class StageOrchestratorAgent(BaseAgent):
             logger.info("")
             logger.info("")
             logger.info(f"[StageOrchestrator] Running implementation_loop for stage {stage_idx}")
+            _adk_utils.set_current_agent("implementation_loop")
 
             try:
                 async for event in self.implementation_loop.run_async(ctx):
@@ -431,6 +432,7 @@ class StageOrchestratorAgent(BaseAgent):
                 logger.info("")
                 logger.info("")
                 logger.info(f"[StageOrchestrator] Running science_reviewer after stage {stage_idx}")
+                _adk_utils.set_current_agent("science_reviewer_agent")
 
                 try:
                     async for event in self.science_reviewer.run_async(ctx):
@@ -469,6 +471,7 @@ class StageOrchestratorAgent(BaseAgent):
             logger.info("")
             logger.info("")
             logger.info(f"[StageOrchestrator] Running criteria_checker after stage {stage_idx}")
+            _adk_utils.set_current_agent("criteria_checker")
 
             try:
                 async for event in self.criteria_checker.run_async(ctx):
@@ -507,6 +510,7 @@ class StageOrchestratorAgent(BaseAgent):
             logger.info("")
             logger.info("")
             logger.info(f"[StageOrchestrator] Running stage_reflector after stage {stage_idx}")
+            _adk_utils.set_current_agent("stage_reflector")
 
             try:
                 async for event in self.stage_reflector.run_async(ctx):

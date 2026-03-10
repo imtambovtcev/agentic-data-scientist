@@ -8,8 +8,10 @@ for the ADK agent system.
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import AsyncGenerator, Optional
 
 from dotenv import load_dotenv
@@ -30,13 +32,20 @@ logger = logging.getLogger(__name__)
 # Path to JSONL usage log, set by audit harness via env var
 _USAGE_LOG_PATH = os.getenv("KDENSE_USAGE_LOG", "")
 _usage_call_counter = 0
-# Stage context — updated by stage_orchestrator patch
+# Stage context — updated by stage_orchestrator
 # Starts as "planning" since planning agents run before orchestrator
 _current_stage_name = "planning"
 _current_stage_index = -1
+_current_agent_name = "unknown"
 
 
-def _write_usage_record(record: dict):
+def set_current_agent(name: str) -> None:
+    """Update the current agent name for per-call log attribution."""
+    global _current_agent_name
+    _current_agent_name = name
+
+
+def _write_usage_record(record: dict) -> None:
     """Append a usage record to the JSONL log file."""
     if not _USAGE_LOG_PATH:
         return
@@ -45,6 +54,46 @@ def _write_usage_record(record: dict):
             f.write(json.dumps(record, default=str) + "\n")
     except Exception as e:
         logger.warning(f"[Instrumentation] Failed to write usage record: {e}")
+
+
+def _write_agent_output(
+    call_id: int,
+    agent_name: str,
+    role: str,
+    model: str,
+    stage_index: int,
+    stage_name: str,
+    timestamp: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    duration: float,
+    text: str,
+) -> None:
+    """Write agent full-text output to a markdown file in agent_outputs/."""
+    if not _USAGE_LOG_PATH or not text.strip():
+        return
+    try:
+        out_dir = Path(_USAGE_LOG_PATH).parent / "agent_outputs"
+        out_dir.mkdir(exist_ok=True)
+
+        stage_label = f"stage{stage_index:02d}" if stage_index >= 0 else "planning"
+        safe_agent = re.sub(r"[^a-zA-Z0-9_-]", "_", agent_name)
+        filename = f"call_{call_id:03d}_{stage_label}_{safe_agent}.md"
+
+        content = (
+            f"# Call {call_id} — {agent_name}\n\n"
+            f"**Stage**: {stage_index} — {stage_name}\n"
+            f"**Model**: {model}\n"
+            f"**Role**: {role}\n"
+            f"**Timestamp**: {timestamp}\n"
+            f"**Tokens**: prompt={prompt_tokens} completion={completion_tokens}\n"
+            f"**Duration**: {duration:.1f}s\n\n"
+            f"---\n\n"
+            f"{text}\n"
+        )
+        (out_dir / filename).write_text(content, encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"[Instrumentation] Failed to write agent output: {e}")
 
 
 class InstrumentedLiteLlm(LiteLlm):
@@ -70,6 +119,7 @@ class InstrumentedLiteLlm(LiteLlm):
         total_completion_tokens = 0
         total_cached_tokens = 0
         responses_count = 0
+        text_parts: list[str] = []
 
         try:
             async for response in super().generate_content_async(llm_request, stream=stream):
@@ -79,6 +129,11 @@ class InstrumentedLiteLlm(LiteLlm):
                     total_prompt_tokens += getattr(um, 'prompt_token_count', 0) or 0
                     total_completion_tokens += getattr(um, 'candidates_token_count', 0) or 0
                     total_cached_tokens += getattr(um, 'cached_content_token_count', 0) or 0
+                # Collect non-thought text parts for agent output log
+                if response.content and response.content.parts:
+                    for part in response.content.parts:
+                        if getattr(part, 'text', None) and not getattr(part, 'thought', False):
+                            text_parts.append(part.text)
                 yield response
         finally:
             duration = time.monotonic() - start_time
@@ -88,6 +143,7 @@ class InstrumentedLiteLlm(LiteLlm):
                 "timestamp": start_ts,
                 "model": self.model,
                 "role": self._role,
+                "agent_name": _current_agent_name,
                 "stage_index": _current_stage_index,
                 "stage_name": _current_stage_name,
                 "prompt_tokens": total_prompt_tokens,
@@ -100,8 +156,24 @@ class InstrumentedLiteLlm(LiteLlm):
             }
             _write_usage_record(record)
 
+            # Write full response text to per-call markdown file
+            full_text = "\n\n".join(text_parts)
+            _write_agent_output(
+                call_id=call_id,
+                agent_name=_current_agent_name,
+                role=self._role,
+                model=self.model,
+                stage_index=_current_stage_index,
+                stage_name=_current_stage_name,
+                timestamp=start_ts,
+                prompt_tokens=total_prompt_tokens,
+                completion_tokens=total_completion_tokens,
+                duration=duration,
+                text=full_text,
+            )
+
             logger.info(
-                f"[Instrumentation] call={call_id} model={self.model} role={self._role} "
+                f"[Instrumentation] call={call_id} agent={_current_agent_name} model={self.model} role={self._role} "
                 f"prompt={total_prompt_tokens} completion={total_completion_tokens} "
                 f"cached={total_cached_tokens} duration={duration:.1f}s"
             )

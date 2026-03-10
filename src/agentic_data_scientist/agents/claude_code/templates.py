@@ -212,28 +212,22 @@ def get_claude_context(
 
     context = f"""{context_prefix}## YOUR CURRENT TASK
 
-Execute the following stage implementation COMPLETELY and THOROUGHLY.
-
-IMPORTANT: You have scientific Skills available in .claude/skills/. 
-Start by asking "What Skills are available?" to discover specialized tools for your task.
-
-Parse this stage into discrete steps and execute EVERY step. Work through multiple related subtasks in this session. Do not exit until this stage is fully implemented.
+Implement the following stage. Go directly to implementation — do not explore the environment or
+discover tools unless explicitly required by the task. Read only the files you need.
 
 Working directory: {working_dir}
 
 CURRENT STAGE TO IMPLEMENT:
 {truncated_plan}
 
-CRITICAL REQUIREMENTS:
-1. Discover and use available Skills for specialized tasks
-2. Complete ALL aspects of this stage - no partial execution
-3. Work through multiple related subtasks in this session (don't exit after one tiny task)
-4. Consider how this stage fits into the overall analysis plan above
-5. Build upon any completed stages mentioned above
-6. Save all outputs with descriptive filenames using {working_dir}/ prefix
-7. Print progress updates after each step
-8. Update README.md incrementally - DO NOT create separate summary files
-9. Document which Skills were used in README
+REQUIREMENTS:
+1. Implement ONLY what this stage specifies — no extra exploration, no scope creep
+2. Build upon completed stages listed above (do not redo their work)
+3. Save outputs with descriptive filenames using {working_dir}/ prefix
+4. Print progress updates after each major step
+5. Update README.md incrementally — DO NOT create separate summary files
+6. If this task involves specialized scientific databases (UniProt, PubChem, etc.), ask
+   "What Skills are available?" to find relevant tools. Otherwise skip Skills discovery.
 
 FILE HANDLING CONSTRAINTS (CRITICAL):
 - DO NOT read files >1MB directly - use head/tail or pandas with nrows parameter
@@ -241,7 +235,7 @@ FILE HANDLING CONSTRAINTS (CRITICAL):
 - For large datasets, load in chunks: pd.read_csv(file, nrows=1000)
 - Violating this causes "JSON buffer exceeded" errors
 
-You MUST implement the entire stage. Parse it into concrete steps, execute them thoroughly, and verify all aspects are complete."""
+Implement the stage completely and efficiently. Avoid unnecessary file reads or exploratory detours."""
 
     return context
 

@@ -394,6 +394,23 @@ Requirements:
             env = os.environ.copy()
             env["ANTHROPIC_MODEL"] = self.model
 
+            # Per-stage turn and budget limits to prevent quadratic context accumulation.
+            # Each tool call in a session re-sends all prior turns as context (O(N²) cost).
+            # KDENSE_MAX_TURNS: hard cap on tool calls per stage (default 80).
+            # KDENSE_MAX_BUDGET_USD: per-stage USD budget cap (default 10.0).
+            max_turns = int(os.environ.get("KDENSE_MAX_TURNS", "80"))
+            max_budget = float(os.environ.get("KDENSE_MAX_BUDGET_USD", "10.0"))
+
+            # context7 MCP server: provides library docs via HTTP lookups.
+            # Disabled by default (KDENSE_CONTEXT7=1 to enable) — adds latency and
+            # encourages exploratory doc-lookup calls that inflate context unnecessarily.
+            mcp_servers = {}
+            if os.environ.get("KDENSE_CONTEXT7", "0") == "1":
+                mcp_servers["context7"] = McpHttpServerConfig(
+                    type="http",
+                    url="https://mcp.context7.com/mcp",
+                )
+
             # Create options for Claude Agent SDK
             # Skills are loaded from .claude/skills/ via setting_sources
             # MCP servers are loaded from .claude/settings.json via setting_sources
@@ -405,12 +422,9 @@ Requirements:
                 system_prompt={"type": "preset", "preset": "claude_code", "append": system_instructions},
                 setting_sources=["project", "user", "local"],
                 disallowed_tools=["WebFetch", "WebSearch"] if is_network_disabled() else None,
-                mcp_servers={
-                    "context7": McpHttpServerConfig(
-                        type="http",
-                        url="https://mcp.context7.com/mcp",
-                    )
-                },
+                mcp_servers=mcp_servers,
+                max_turns=max_turns,
+                max_budget_usd=max_budget,
             )
 
             yield Event(

@@ -31,6 +31,9 @@ You are the **review_agent**. Provide a rigorous, objective evaluation of each `
 ## Implementation Summary (Actual)
 {implementation_summary?}
 
+## Science Review Feedback (from previous stage, if any)
+{science_review_feedback?}
+
 # Review Approach
 Structure your feedback as:
 1. **Pass/Fail Checklist** – Bullet list mapping each plan step to evidence of completion or deviation.

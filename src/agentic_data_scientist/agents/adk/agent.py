@@ -626,6 +626,32 @@ def create_agent(
         generate_content_config=get_generate_content_config(temperature=0.0),
     )
 
+    # ------------------------- Science Reviewer -------------------------
+
+    logger.info("[AgenticDS] Loading science reviewer prompt")
+    science_reviewer_instructions = load_prompt("science_reviewer")
+
+    logger.info(f"[AgenticDS] Creating science_reviewer_agent with model={REVIEW_MODEL}")
+
+    science_reviewer_compression = create_compression_callback(event_threshold=40, overlap_size=20)
+
+    science_reviewer_agent = LoopDetectionAgent(
+        name="science_reviewer_agent",
+        model=REVIEW_MODEL,
+        description="Reviews each stage for scientific and methodological validity: data leakage, feature availability at prediction time, evaluation soundness.",
+        instruction=science_reviewer_instructions,
+        tools=tools,  # NEEDS TOOLS to inspect code files
+        output_key="science_review_feedback",
+        planner=BuiltInPlanner(
+            thinking_config=types.ThinkingConfig(
+                include_thoughts=True,
+                thinking_budget=-1,
+            ),
+        ),
+        generate_content_config=get_generate_content_config(temperature=0.2),
+        after_agent_callback=science_reviewer_compression,
+    )
+
     # ------------------------- Stage Reflector -------------------------
 
     logger.info("[AgenticDS] Loading stage reflector prompt")
@@ -662,6 +688,7 @@ def create_agent(
 
     stage_orchestrator = StageOrchestratorAgent(
         implementation_loop=implementation_loop,
+        science_reviewer=science_reviewer_agent,
         criteria_checker=success_criteria_checker,
         stage_reflector=stage_reflector,
         name="stage_orchestrator",

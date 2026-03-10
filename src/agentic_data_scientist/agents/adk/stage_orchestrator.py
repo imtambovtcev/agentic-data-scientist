@@ -78,6 +78,7 @@ class StageOrchestratorAgent(BaseAgent):
 
     # Use PrivateAttr for agent references since they shouldn't be serialized
     _implementation_loop: Any = PrivateAttr()
+    _science_reviewer: Any = PrivateAttr()
     _criteria_checker: Any = PrivateAttr()
     _stage_reflector: Any = PrivateAttr()
 
@@ -86,11 +87,13 @@ class StageOrchestratorAgent(BaseAgent):
         implementation_loop: BaseAgent,
         criteria_checker: BaseAgent,
         stage_reflector: BaseAgent,
+        science_reviewer: BaseAgent = None,
         name: str = "stage_orchestrator",
         description: str = "Orchestrates stage-by-stage implementation with criteria checking",
     ):
         super().__init__(name=name, description=description)
         self._implementation_loop = implementation_loop
+        self._science_reviewer = science_reviewer
         self._criteria_checker = criteria_checker
         self._stage_reflector = stage_reflector
 
@@ -98,6 +101,11 @@ class StageOrchestratorAgent(BaseAgent):
     def implementation_loop(self) -> BaseAgent:
         """Get the implementation loop agent."""
         return self._implementation_loop
+
+    @property
+    def science_reviewer(self) -> BaseAgent:
+        """Get the science reviewer agent."""
+        return self._science_reviewer
 
     @property
     def criteria_checker(self) -> BaseAgent:
@@ -417,6 +425,44 @@ class StageOrchestratorAgent(BaseAgent):
                 }
             )
             state["stage_implementations"] = stage_implementations
+
+            # === Run Science Reviewer ===
+            if self._science_reviewer is not None:
+                logger.info("")
+                logger.info("")
+                logger.info(f"[StageOrchestrator] Running science_reviewer after stage {stage_idx}")
+
+                try:
+                    async for event in self.science_reviewer.run_async(ctx):
+                        yield event
+
+                    science_feedback = state.get("science_review_feedback", "")
+                    # Log the verdict line for visibility
+                    verdict_line = next(
+                        (l for l in science_feedback.splitlines() if "Verdict" in l or "BLOCK" in l or "PASS" in l or "WARN" in l),
+                        "Science review complete."
+                    )
+                    logger.info(f"[StageOrchestrator] Science review result: {verdict_line.strip()}")
+
+                except Exception as e:
+                    logger.error(
+                        f"[StageOrchestrator] Science reviewer failed for stage {stage_idx}: {e}",
+                        exc_info=True,
+                    )
+                    error_event = Event(
+                        author=self.name,
+                        content=types.Content(
+                            role="model",
+                            parts=[
+                                types.Part(
+                                    text=f"\n\n⚠️ Science reviewer failed for stage {stage_idx}: {str(e)}\n"
+                                    "Continuing without science review...\n\n"
+                                )
+                            ],
+                        ),
+                        turn_complete=False,
+                    )
+                    yield error_event
 
             # === Run Success Criteria Checker ===
             logger.info("")

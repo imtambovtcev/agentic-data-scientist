@@ -72,6 +72,9 @@ If everything looks good and no adaptations are needed:
 **What's Been Implemented So Far:**
 {stage_implementations?}
 
+**Science Review Feedback (methodological issues found in this stage):**
+{science_review_feedback?}
+
 # Critical Instructions
 
 - **Inspect the working directory** using available tools to understand what's been accomplished

@@ -15,6 +15,7 @@ from google.genai import types
 from pydantic import PrivateAttr
 
 from agentic_data_scientist.agents.adk.event_compression import compress_events_manually
+from agentic_data_scientist.agents.adk import utils as _adk_utils
 
 
 logger = logging.getLogger(__name__)
@@ -226,6 +227,10 @@ class StageOrchestratorAgent(BaseAgent):
                 yield error_event
                 return
 
+        # Set initial instrumentation context
+        _adk_utils._current_stage_index = -1
+        _adk_utils._current_stage_name = "orchestration_init"
+
         logger.info(f"[StageOrchestrator] Starting orchestration with {len(stages)} stages")
         logger.info(f"[StageOrchestrator] Success criteria count: {len(criteria)}")
 
@@ -319,6 +324,10 @@ class StageOrchestratorAgent(BaseAgent):
             stage_idx = next_stage["index"]
 
             logger.info(f"[StageOrchestrator] 📍 Starting stage {stage_idx}: {next_stage['title']}")
+
+            # Update instrumentation stage context
+            _adk_utils._current_stage_index = stage_idx
+            _adk_utils._current_stage_name = next_stage['title']
 
             # Create stage start event
             stage_start_event = Event(

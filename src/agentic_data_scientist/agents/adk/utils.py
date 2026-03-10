@@ -5,12 +5,17 @@ This module provides model configuration, helper functions, and shared settings
 for the ADK agent system.
 """
 
+import json
 import logging
 import os
-from typing import Optional
+import time
+from datetime import datetime, timezone
+from typing import AsyncGenerator, Optional
 
 from dotenv import load_dotenv
 from google.adk.models.lite_llm import LiteLlm
+from google.adk.models.llm_request import LlmRequest
+from google.adk.models.llm_response import LlmResponse
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types
 
@@ -18,6 +23,88 @@ from google.genai import types
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+
+# ========================= Instrumented LiteLlm =========================
+
+# Path to JSONL usage log, set by audit harness via env var
+_USAGE_LOG_PATH = os.getenv("KDENSE_USAGE_LOG", "")
+_usage_call_counter = 0
+# Stage context — updated by stage_orchestrator patch
+# Starts as "planning" since planning agents run before orchestrator
+_current_stage_name = "planning"
+_current_stage_index = -1
+
+
+def _write_usage_record(record: dict):
+    """Append a usage record to the JSONL log file."""
+    if not _USAGE_LOG_PATH:
+        return
+    try:
+        with open(_USAGE_LOG_PATH, "a") as f:
+            f.write(json.dumps(record, default=str) + "\n")
+    except Exception as e:
+        logger.warning(f"[Instrumentation] Failed to write usage record: {e}")
+
+
+class InstrumentedLiteLlm(LiteLlm):
+    """LiteLlm wrapper that logs per-call token usage and timing to JSONL."""
+
+    _role: str = "unknown"
+
+    def __init__(self, model: str, role: str = "unknown", **kwargs):
+        super().__init__(model=model, **kwargs)
+        self._role = role
+
+    async def generate_content_async(
+        self, llm_request: LlmRequest, stream: bool = False
+    ) -> AsyncGenerator[LlmResponse, None]:
+        global _usage_call_counter
+        _usage_call_counter += 1
+        call_id = _usage_call_counter
+
+        start_time = time.monotonic()
+        start_ts = datetime.now(timezone.utc).isoformat()
+
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        total_cached_tokens = 0
+        responses_count = 0
+
+        try:
+            async for response in super().generate_content_async(llm_request, stream=stream):
+                responses_count += 1
+                if response.usage_metadata:
+                    um = response.usage_metadata
+                    total_prompt_tokens += getattr(um, 'prompt_token_count', 0) or 0
+                    total_completion_tokens += getattr(um, 'candidates_token_count', 0) or 0
+                    total_cached_tokens += getattr(um, 'cached_content_token_count', 0) or 0
+                yield response
+        finally:
+            duration = time.monotonic() - start_time
+
+            record = {
+                "call_id": call_id,
+                "timestamp": start_ts,
+                "model": self.model,
+                "role": self._role,
+                "stage_index": _current_stage_index,
+                "stage_name": _current_stage_name,
+                "prompt_tokens": total_prompt_tokens,
+                "completion_tokens": total_completion_tokens,
+                "cached_tokens": total_cached_tokens,
+                "total_tokens": total_prompt_tokens + total_completion_tokens,
+                "duration_seconds": round(duration, 3),
+                "stream": stream,
+                "responses_count": responses_count,
+            }
+            _write_usage_record(record)
+
+            logger.info(
+                f"[Instrumentation] call={call_id} model={self.model} role={self._role} "
+                f"prompt={total_prompt_tokens} completion={total_completion_tokens} "
+                f"cached={total_cached_tokens} duration={duration:.1f}s"
+            )
 
 
 # Model configuration
@@ -56,10 +143,11 @@ if OPENROUTER_API_KEY:
 else:
     logger.warning("[AgenticDS] OPENROUTER_API_KEY not set - using default credentials")
 
-# Create LiteLLM model instances
+# Create LiteLLM model instances (instrumented for per-call token/timing logging)
 # LiteLLM will automatically route through OpenRouter when model names have the provider prefix (e.g., "google/", "anthropic/")
-DEFAULT_MODEL = LiteLlm(
+DEFAULT_MODEL = InstrumentedLiteLlm(
     model=DEFAULT_MODEL_NAME,
+    role="orchestration",
     num_retries=10,
     timeout=60,
     # Additional OpenRouter-specific headers
@@ -67,8 +155,9 @@ DEFAULT_MODEL = LiteLlm(
     custom_llm_provider="openrouter" if OPENROUTER_API_KEY else None,
 )
 
-REVIEW_MODEL = LiteLlm(
+REVIEW_MODEL = InstrumentedLiteLlm(
     model=REVIEW_MODEL_NAME,
+    role="review",
     num_retries=10,
     timeout=60,
     api_base=OPENROUTER_API_BASE if OPENROUTER_API_KEY else None,

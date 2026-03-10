@@ -6,8 +6,11 @@ tasks and plans.
 """
 
 import asyncio
+import json
 import logging
 import os
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
@@ -246,6 +249,59 @@ class ClaudeCodeAgent(Agent):
             f"[Claude Code] [{self.name}] Truncated implementation_summary from {len(summary)} to {len(truncated)} chars"
         )
         return truncated
+
+    def _log_coding_usage(self, message):
+        """Log coding model usage from a ResultMessage to the JSONL usage log."""
+        usage_log_path = os.getenv("KDENSE_USAGE_LOG", "")
+        if not usage_log_path:
+            return
+
+        try:
+            from agentic_data_scientist.agents.adk.utils import (
+                _current_stage_index, _current_stage_name, _usage_call_counter
+            )
+            import agentic_data_scientist.agents.adk.utils as _utils
+            _utils._usage_call_counter += 1
+            call_id = _utils._usage_call_counter
+
+            usage = getattr(message, 'usage', None) or {}
+            cost = getattr(message, 'total_cost_usd', None)
+            duration_ms = getattr(message, 'duration_ms', 0) or 0
+            duration_api_ms = getattr(message, 'duration_api_ms', 0) or 0
+            num_turns = getattr(message, 'num_turns', 0) or 0
+            session_id = getattr(message, 'session_id', '') or ''
+
+            record = {
+                "call_id": call_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "model": self.model,
+                "role": "coding",
+                "stage_index": _current_stage_index,
+                "stage_name": _current_stage_name,
+                "prompt_tokens": usage.get("input_tokens", 0),
+                "completion_tokens": usage.get("output_tokens", 0),
+                "cached_tokens": usage.get("cache_read_input_tokens", 0),
+                "total_tokens": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+                "duration_seconds": round(duration_ms / 1000, 3),
+                "duration_api_seconds": round(duration_api_ms / 1000, 3),
+                "total_cost_usd": cost,
+                "num_turns": num_turns,
+                "session_id": session_id,
+                "stream": False,
+                "responses_count": 1,
+            }
+
+            with open(usage_log_path, "a") as f:
+                f.write(json.dumps(record, default=str) + "\n")
+
+            logger.info(
+                f"[Instrumentation] call={call_id} model={self.model} role=coding "
+                f"input={usage.get('input_tokens', 0)} output={usage.get('output_tokens', 0)} "
+                f"cached={usage.get('cache_read_input_tokens', 0)} "
+                f"cost=${cost or 0:.4f} duration={duration_ms/1000:.1f}s turns={num_turns}"
+            )
+        except Exception as e:
+            logger.warning(f"[Instrumentation] Failed to log coding usage: {e}")
 
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         """Execute Claude Agent with the implementation plan."""
@@ -565,6 +621,9 @@ Requirements:
                     elif message_type == "ResultMessage":
                         # Final result from Claude - indicates task completion
                         subtype = getattr(message, 'subtype', None)
+
+                        # Log coding model usage from ResultMessage
+                        self._log_coding_usage(message)
 
                         if subtype == 'success':
                             result_text = "\n=== Task Completed Successfully ==="

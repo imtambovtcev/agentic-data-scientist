@@ -46,6 +46,7 @@ class SessionConfig:
     session_id: Optional[str] = None
     working_dir: Optional[str] = None
     auto_cleanup: bool = True
+    domain: Optional[str] = None
 
 
 @dataclass
@@ -97,6 +98,7 @@ class DataScientist:
         mcp_servers: Optional[List[str]] = None,
         working_dir: Optional[str] = None,
         auto_cleanup: Optional[bool] = None,
+        domain: Optional[str] = None,
     ):
         """Initialize Agentic Data Scientist core with configuration."""
         # Generate session ID
@@ -124,6 +126,7 @@ class DataScientist:
             mcp_servers=mcp_servers,
             working_dir=str(self.working_dir),
             auto_cleanup=self.auto_cleanup,
+            domain=domain,
         )
 
         # ADK components
@@ -148,6 +151,7 @@ class DataScientist:
             app = create_app(
                 working_dir=str(self.working_dir),
                 mcp_servers=self.config.mcp_servers,
+                domain=self.config.domain,
             )
 
             # Store both app and agent references

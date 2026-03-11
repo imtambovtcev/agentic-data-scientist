@@ -403,6 +403,7 @@ class NonEscalatingLoopAgent(LoopAgent):
 def create_agent(
     working_dir: Optional[str] = None,
     mcp_servers: Optional[List[str]] = None,
+    domain: Optional[str] = None,
 ) -> LoopDetectionAgent:
     """
     Factory function to create an Agentic Data Scientist ADK agent.
@@ -413,6 +414,9 @@ def create_agent(
         Working directory for the session
     mcp_servers : List[str], optional
         List of MCP servers to enable for tools
+    domain : str, optional
+        Domain namespace for specialized prompts (e.g., 'time_series', 'bioinformatics').
+        Falls back to base prompts for any prompt not found in the domain.
 
     Returns
     -------
@@ -504,7 +508,7 @@ def create_agent(
     # ------------------------- Summary Agent -------------------------
 
     logger.info("[AgenticDS] Loading summary_agent prompt")
-    summary_agent_instructions = load_prompt("summary")
+    summary_agent_instructions = load_prompt("summary", domain=domain)
 
     logger.info(f"[AgenticDS] Creating summary_agent with model={DEFAULT_MODEL}")
 
@@ -526,7 +530,7 @@ def create_agent(
     # ------------------------- High Level Planning Agents -------------------------
 
     logger.info("[AgenticDS] Loading plan maker agent prompt")
-    plan_maker_instructions = load_prompt("plan_maker")
+    plan_maker_instructions = load_prompt("plan_maker", domain=domain)
 
     logger.info(f"[AgenticDS] Creating plan maker agent with model={DEFAULT_MODEL}")
 
@@ -550,7 +554,7 @@ def create_agent(
     )
 
     logger.info("[AgenticDS] Loading plan reviewer agent prompt")
-    plan_reviewer_instructions = load_prompt("plan_reviewer")
+    plan_reviewer_instructions = load_prompt("plan_reviewer", domain=domain)
 
     logger.info(f"[AgenticDS] Creating plan reviewer agent with model={REVIEW_MODEL}")
 
@@ -587,7 +591,7 @@ def create_agent(
     # ------------------------- High Level Plan Parser -------------------------
 
     logger.info("[AgenticDS] Loading plan parser prompt")
-    plan_parser_instructions = load_prompt("plan_parser")
+    plan_parser_instructions = load_prompt("plan_parser", domain=domain)
 
     logger.info(f"[AgenticDS] Creating plan parser agent with model={DEFAULT_MODEL}")
 
@@ -606,7 +610,7 @@ def create_agent(
     # ------------------------- Success Criteria Checker -------------------------
 
     logger.info("[AgenticDS] Loading criteria checker prompt")
-    criteria_checker_instructions = load_prompt("criteria_checker")
+    criteria_checker_instructions = load_prompt("criteria_checker", domain=domain)
 
     logger.info(f"[AgenticDS] Creating criteria checker agent with model={REVIEW_MODEL}")
 
@@ -634,7 +638,7 @@ def create_agent(
     # ------------------------- Science Reviewer -------------------------
 
     logger.info("[AgenticDS] Loading science reviewer prompt")
-    science_reviewer_instructions = load_prompt("science_reviewer")
+    science_reviewer_instructions = load_prompt("science_reviewer", domain=domain)
 
     logger.info(f"[AgenticDS] Creating science_reviewer_agent with model={REVIEW_MODEL}")
 
@@ -660,7 +664,7 @@ def create_agent(
     # ------------------------- Stage Reflector -------------------------
 
     logger.info("[AgenticDS] Loading stage reflector prompt")
-    stage_reflector_instructions = load_prompt("stage_reflector")
+    stage_reflector_instructions = load_prompt("stage_reflector", domain=domain)
 
     logger.info(f"[AgenticDS] Creating stage reflector agent with model={DEFAULT_MODEL}")
 
@@ -723,6 +727,7 @@ def create_agent(
 def create_app(
     working_dir: Optional[str] = None,
     mcp_servers: Optional[List[str]] = None,
+    domain: Optional[str] = None,
 ) -> App:
     """
     Create an App instance with context management for the ADK agent.
@@ -740,7 +745,7 @@ def create_app(
         The configured App with context caching and compression
     """
     # Create the root agent
-    root_agent = create_agent(working_dir=working_dir, mcp_servers=mcp_servers)
+    root_agent = create_agent(working_dir=working_dir, mcp_servers=mcp_servers, domain=domain)
 
     # Configure context caching (just creating the config enables caching)
     cache_config = ContextCacheConfig()

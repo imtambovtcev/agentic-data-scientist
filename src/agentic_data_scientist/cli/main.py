@@ -70,6 +70,12 @@ logger = logging.getLogger(__name__)
     is_flag=True,
     help='Keep working directory after completion (only applies when not using --temp-dir)',
 )
+@click.option(
+    '--domain',
+    type=str,
+    default=None,
+    help='Domain for specialized prompts (e.g., time_series, bioinformatics). Falls back to base prompts if not set.',
+)
 @click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
 @click.option(
     '--log-file',
@@ -83,6 +89,7 @@ def main(
     working_dir: Optional[str],
     temp_dir: bool,
     keep_files: bool,
+    domain: Optional[str],
     verbose: bool,
     log_file: Optional[str],
 ):
@@ -195,6 +202,7 @@ def main(
             agent_type=agent_type,
             working_dir=working_dir_to_use,
             auto_cleanup=auto_cleanup,
+            domain=domain,
         )
 
         # Configure logging to file

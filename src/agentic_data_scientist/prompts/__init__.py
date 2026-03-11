@@ -27,15 +27,18 @@ def load_prompt(name: str, domain: Optional[str] = None) -> str:
     """
     prompts_dir = Path(__file__).parent
 
+    base_path = prompts_dir / "base" / f"{name}.md"
+
     if domain:
-        prompt_path = prompts_dir / "domain" / domain / f"{name}.md"
-    else:
-        prompt_path = prompts_dir / "base" / f"{name}.md"
+        domain_path = prompts_dir / "domain" / domain / f"{name}.md"
+        if domain_path.exists():
+            return domain_path.read_text()
+        # Fall back to base if domain-specific prompt doesn't exist
 
-    if not prompt_path.exists():
-        raise FileNotFoundError(f"Prompt not found: {prompt_path}")
+    if not base_path.exists():
+        raise FileNotFoundError(f"Prompt not found: {base_path}")
 
-    return prompt_path.read_text()
+    return base_path.read_text()
 
 
 __all__ = ["load_prompt"]

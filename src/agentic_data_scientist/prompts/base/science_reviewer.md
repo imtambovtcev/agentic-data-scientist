@@ -23,9 +23,8 @@ For every implementation you review, ask:
 
 ## 3. Feature Validity at Prediction Time
 - For each feature: will it actually be available when predicting the target?
-- For forecasting with horizon H: does any feature require data from within H days of the prediction date? If so, it will be NaN or require future knowledge.
-- Example of invalid feature for 90-day-ahead forecasting: lag_7 (requires sales 7 days ago, which is in the future for most predictions)
-- Example of valid feature: lag_365 (requires sales 365 days ago — safely before any 90-day horizon)
+- For forecasting with horizon H: does any feature require data from within H steps of the prediction date? If so, it will be NaN or require future knowledge.
+- A lag feature is valid only if the lag exceeds the forecast horizon (k > H); shorter lags fall into the prediction window and are unavailable at inference time.
 
 ## 4. Model Assumptions vs Problem Structure
 - Is the model appropriate for the data structure (IID vs temporal, sparse vs dense, etc.)?

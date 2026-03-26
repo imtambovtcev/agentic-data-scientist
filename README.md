@@ -121,6 +121,21 @@ agentic-data-scientist "Explain how gradient boosting works" --mode simple
 agentic-data-scientist "Quick data exploration" --mode simple --files data.csv --temp-dir
 ```
 
+#### Domain-Specific Prompts
+
+Use `--domain` to activate specialized prompts for your problem domain. Domain prompts override base prompts where available and fall back to base prompts otherwise.
+
+```bash
+# Time-series forecasting with domain-aware planning and science review
+agentic-data-scientist "Forecast daily sales for the next 90 days" \
+  --mode orchestrated --domain time_series --files sales.csv
+
+# Without --domain, base (domain-agnostic) prompts are used
+agentic-data-scientist "Analyze customer data" --mode orchestrated --files data.csv
+```
+
+Available domains: `time_series` (included). Add your own by creating prompt files in `prompts/domain/<your_domain>/`.
+
 #### Additional Options
 
 ```bash
@@ -210,6 +225,12 @@ Agentic Data Scientist uses a multi-phase workflow designed to produce high-qual
         │  └──────────┬────────────┘   │
         │             │                │
         │  ┌──────────▼────────────┐   │
+        │  │ Science Reviewer      │   │
+        │  │ "Is the methodology   │   │  Validates scientific
+        │  │  sound?"              │───┤  correctness
+        │  └──────────┬────────────┘   │
+        │             │                │
+        │  ┌──────────▼────────────┐   │
         │  │ Stage Reflector       │   │
         │  │ "What should we do    │   │
         │  │  next?" Adapts plan   │   │
@@ -236,9 +257,29 @@ Each agent in the workflow has a specific responsibility:
 - **Stage Orchestrator**: Manages the execution cycle - runs stages one at a time, validates progress, and adapts as needed
 - **Coding Agent**: Does the actual implementation work (powered by Claude Code SDK with access to 380+ scientific Skills)
 - **Review Agent**: "Was this done correctly?" - Validates implementations against requirements before proceeding
+- **Science Reviewer**: "Is the methodology sound?" - Validates scientific correctness: data leakage, feature validity at prediction time, evaluation soundness
 - **Criteria Checker**: "What have we accomplished?" - Objectively tracks progress against success criteria after each stage
 - **Stage Reflector**: "What should we do next?" - Analyzes progress and adapts remaining stages based on what's been learned
 - **Summary Agent**: Synthesizes all work into a comprehensive, publication-ready report
+
+### Science Reviewer
+
+The **Science Reviewer** is an optional agent that runs after each implementation stage to validate scientific and methodological soundness. It inspects actual code (not summaries) and checks for:
+
+- **Data leakage** — features computed using data unavailable at prediction time
+- **Feature validity** — whether features will actually be available when predicting
+- **Evaluation soundness** — proper train/test splits, correct metrics, temporal ordering
+- **Model appropriateness** — loss function vs target distribution, model assumptions vs data structure
+
+The reviewer issues a verdict per stage: **PASS**, **WARN**, or **BLOCK**. A BLOCK prevents the workflow from proceeding until the issue is fixed.
+
+### Domain-Specific Prompts
+
+The `--domain` flag activates specialized prompts tailored to specific problem types. Domain prompts override base prompts where a domain-specific version exists, and fall back to base prompts otherwise.
+
+**Included domain: `time_series`** — adds forecasting-aware planning (horizon-safe feature construction, rolling CV design, ensemble strategy) and a specialized science reviewer that checks lag validity, rolling window shifts, and target transform consistency.
+
+**Adding custom domains:** Create markdown prompt files in `src/agentic_data_scientist/prompts/domain/<your_domain>/`. Any prompt name that matches a base prompt (e.g., `plan_maker.md`, `science_reviewer.md`) will override it when `--domain <your_domain>` is used.
 
 ## Architecture
 
@@ -254,8 +295,9 @@ Each agent in the workflow has a specific responsibility:
 │  │ Planning Loop (Plan Maker → Reviewer → Parser)         │  │
 │  └────────────────────────────────────────────────────────┘  │
 │  ┌────────────────────────────────────────────────────────┐  │
-│  │ Stage Orchestrator                                     │  |
+│  │ Stage Orchestrator                                     │  │
 │  │   ├─> Implementation Loop (Coding → Review)            │  │
+│  │   ├─> Science Reviewer (methodology validation)        │  │
 │  │   ├─> Criteria Checker                                 │  │
 │  │   └─> Stage Reflector                                  │  │
 │  └────────────────────────────────────────────────────────┘  │
@@ -264,7 +306,7 @@ Each agent in the workflow has a specific responsibility:
 │  └────────────────────────────────────────────────────────┘  │
 ├──────────────────────────────────────────────────────────────┤
 │                     Tool Layer                               │
-│  • Built-in Tools: Read-only file ops, web fetch             │
+│  • Built-in Tools: File ops (read + write), web fetch        │
 │  • Claude Scientific Skills: 120+ skills                     │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -283,13 +325,24 @@ GOOGLE_API_KEY=your_key_here
 # Optional: Model configuration
 DEFAULT_MODEL=google/gemini-2.5-pro
 CODING_MODEL=claude-sonnet-4-5-20250929
+
+# Optional: Coding agent limits (prevent runaway context/cost)
+ADS_MAX_TURNS=80          # Max tool calls per stage (default: 80)
+ADS_MAX_BUDGET_USD=10.0   # Per-stage USD budget cap (default: 10.0)
+
+# Optional: Instrumentation (usage logging)
+ADS_USAGE_LOG=/path/to/usage.jsonl  # Per-call token/timing log (disabled if unset)
+
+# Optional: MCP servers
+ADS_CONTEXT7=true  # Enable context7 MCP server for library docs (disabled by default)
 ```
 
 ### Tools & Skills
 
 **Built-in Tools** (planning/review agents):
-- **File Operations**: Read-only file access within working directory
-  - `read_file`, `read_media_file`, `list_directory`, `directory_tree`, `search_files`, `get_file_info`
+- **File Operations**: File access within working directory (sandboxed)
+  - Read: `read_file`, `read_media_file`, `list_directory`, `directory_tree`, `search_files`, `get_file_info`
+  - Write: `write_file` (selectively granted to summary_agent)
 - **Web Operations**: HTTP fetch for retrieving web content
   - `fetch_url`
 
@@ -416,8 +469,9 @@ agentic-data-scientist/
 │   │   │   └── review_confirmation.py# Review decision logic
 │   │   └── claude_code/# Claude Code integration
 │   ├── prompts/        # Prompt templates
-│   │   ├── base/       # Agent role prompts
-│   │   └── domain/     # Domain-specific prompts
+│   │   ├── base/       # Agent role prompts (including science_reviewer)
+│   │   └── domain/     # Domain-specific prompt overrides
+│   │       └── time_series/  # Forecasting-aware plan_maker & science_reviewer
 │   ├── tools/          # Built-in tools (file ops, web fetch)
 │   └── cli/            # CLI interface
 ├── tests/              # Test suite
@@ -482,8 +536,20 @@ The system employs multiple layers of protection:
 - **Manual compression**: Triggered at key orchestration points (e.g., after implementation loop)
 - **Hard limit trimming**: Emergency fallback that discards old events if count exceeds maximum
 - **Large text truncation**: Prevents individual events from consuming excessive tokens
+- **Per-stage turn limits**: `ADS_MAX_TURNS` caps tool calls per coding stage (default: 80), preventing quadratic context growth where each tool call re-sends all prior turns
+- **Per-stage budget limits**: `ADS_MAX_BUDGET_USD` caps USD spend per coding stage (default: $10)
 
 These mechanisms work together to keep the total context under 1M tokens even during complex multi-stage analyses.
+
+### Instrumentation
+
+Optional per-call usage logging records token counts, timing, model, agent name, and stage for every LLM call. Enable by setting `ADS_USAGE_LOG` to a file path:
+
+```bash
+export ADS_USAGE_LOG=./usage.jsonl
+```
+
+Each line is a JSON object with fields: `call_id`, `timestamp`, `model`, `role`, `agent_name`, `stage_index`, `stage_name`, `prompt_tokens`, `completion_tokens`, `cached_tokens`, `duration_seconds`. Agent text outputs are also saved to `agent_outputs/` alongside the log file.
 
 ## Support
 

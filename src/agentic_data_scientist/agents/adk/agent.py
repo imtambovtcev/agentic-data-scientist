@@ -738,6 +738,9 @@ def create_app(
         Working directory for the session
     mcp_servers : List[str], optional
         List of MCP servers to enable for tools
+    domain : str, optional
+        Domain namespace for specialized prompts (e.g., 'time_series', 'bioinformatics').
+        Falls back to base prompts for any prompt not found in the domain.
 
     Returns
     -------

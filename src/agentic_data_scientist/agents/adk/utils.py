@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 # ========================= Instrumented LiteLlm =========================
 
-# Path to JSONL usage log, set by audit harness via env var
-_USAGE_LOG_PATH = os.getenv("KDENSE_USAGE_LOG", "")
+# Path to JSONL usage log (optional; set to enable per-call token/timing logging)
+_USAGE_LOG_PATH = os.getenv("ADS_USAGE_LOG", "")
 _usage_call_counter = 0
 # Stage context — updated by stage_orchestrator
 # Starts as "planning" since planning agents run before orchestrator

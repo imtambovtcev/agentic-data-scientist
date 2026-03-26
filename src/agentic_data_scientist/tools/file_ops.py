@@ -1,7 +1,8 @@
 """
 File operation tools for ADK agents.
 
-All file operations are read-only and enforce working_dir sandboxing.
+File operations enforce working_dir sandboxing. Read tools are available to all
+agents; write_file is selectively granted (e.g., summary_agent).
 Paths are validated to prevent access outside the working directory.
 """
 

@@ -252,7 +252,7 @@ class ClaudeCodeAgent(Agent):
 
     def _log_coding_usage(self, message):
         """Log coding model usage from a ResultMessage to the JSONL usage log."""
-        usage_log_path = os.getenv("KDENSE_USAGE_LOG", "")
+        usage_log_path = os.getenv("ADS_USAGE_LOG", "")
         if not usage_log_path:
             return
 
@@ -396,16 +396,16 @@ Requirements:
 
             # Per-stage turn and budget limits to prevent quadratic context accumulation.
             # Each tool call in a session re-sends all prior turns as context (O(N²) cost).
-            # KDENSE_MAX_TURNS: hard cap on tool calls per stage (default 80).
-            # KDENSE_MAX_BUDGET_USD: per-stage USD budget cap (default 10.0).
-            max_turns = int(os.environ.get("KDENSE_MAX_TURNS", "80"))
-            max_budget = float(os.environ.get("KDENSE_MAX_BUDGET_USD", "10.0"))
+            # ADS_MAX_TURNS: hard cap on tool calls per stage (default 80).
+            # ADS_MAX_BUDGET_USD: per-stage USD budget cap (default 10.0).
+            max_turns = int(os.environ.get("ADS_MAX_TURNS", "80"))
+            max_budget = float(os.environ.get("ADS_MAX_BUDGET_USD", "10.0"))
 
             # context7 MCP server: provides library docs via HTTP lookups.
-            # Disabled by default (KDENSE_CONTEXT7=1 to enable) — adds latency and
+            # Disabled by default (ADS_CONTEXT7=1 to enable) — adds latency and
             # encourages exploratory doc-lookup calls that inflate context unnecessarily.
             mcp_servers = {}
-            if os.environ.get("KDENSE_CONTEXT7", "0") == "1":
+            if os.environ.get("ADS_CONTEXT7", "").lower() in ("true", "1"):
                 mcp_servers["context7"] = McpHttpServerConfig(
                     type="http",
                     url="https://mcp.context7.com/mcp",
